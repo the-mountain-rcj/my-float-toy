@@ -124,7 +124,71 @@
     See Wikipedia for details on the <a href="https://en.wikipedia.org/wiki/Half-precision_floating-point_format">half-precision</a>, <a href="https://en.wikipedia.org/wiki/Single-precision_floating-point_format">single-precision</a> and <a href="https://en.wikipedia.org/wiki/Double-precision_floating-point_format">double-precision</a> floating-point formats.
   </p>
 
-  <h2>16-bit (half)</h2>
+  <h2>4-bit (FP4-e2m1)</h2>
+  <table>
+    <tr>
+      <td><span id="input4" class="input"></span></td>
+      <td class="zerox-col"><span class="zerox">&nbsp;&nbsp;=&nbsp;&nbsp;0x</span></td>
+      <td class="output-col"><input id="hex4" class="output"></td>
+    </tr>
+  </table>
+  <table>
+    <tr>
+      <td><span id="help4" class="help"></span></td>
+      <td>&nbsp;&nbsp;=&nbsp;&nbsp;</td>
+      <td class="hex-col"><input id="output4" class="output"></td>
+    </tr>
+  </table>
+
+  <h2>8-bit (FP8-e4m3)</h2>
+  <table>
+    <tr>
+      <td><span id="input8" class="input"></span></td>
+      <td class="zerox-col"><span class="zerox">&nbsp;&nbsp;=&nbsp;&nbsp;0x</span></td>
+      <td class="output-col"><input id="hex8" class="output"></td>
+    </tr>
+  </table>
+  <table>
+    <tr>
+      <td><span id="help8" class="help"></span></td>
+      <td>&nbsp;&nbsp;=&nbsp;&nbsp;</td>
+      <td class="hex-col"><input id="output8" class="output"></td>
+    </tr>
+  </table>
+
+  <h2>8-bit (E8M0 Scale Block)</h2>
+  <table>
+    <tr>
+      <td><span id="input_e8m0" class="input"></span></td>
+      <td class="zerox-col"><span class="zerox">&nbsp;&nbsp;=&nbsp;&nbsp;0x</span></td>
+      <td class="output-col"><input id="hex_e8m0" class="output"></td>
+    </tr>
+  </table>
+  <table>
+    <tr>
+      <td><span id="help_e8m0" class="help"></span></td>
+      <td>&nbsp;&nbsp;=&nbsp;&nbsp;</td>
+      <td class="hex-col"><input id="output_e8m0" class="output"></td>
+    </tr>
+  </table>
+
+  <h2>16-bit (BF16)</h2>
+  <table>
+    <tr>
+      <td><span id="input_bf16" class="input"></span></td>
+      <td class="zerox-col"><span class="zerox">&nbsp;&nbsp;=&nbsp;&nbsp;0x</span></td>
+      <td class="output-col"><input id="hex_bf16" class="output"></td>
+    </tr>
+  </table>
+  <table>
+    <tr>
+      <td><span id="help_bf16" class="help"></span></td>
+      <td>&nbsp;&nbsp;=&nbsp;&nbsp;</td>
+      <td class="hex-col"><input id="output_bf16" class="output"></td>
+    </tr>
+  </table>
+
+  <h2>16-bit (FP16)</h2>
   <table>
     <tr>
       <td><span id="input16" class="input"></span></td>
@@ -176,14 +240,174 @@
 <script>
 const {Float16Array} = float16;
 
+class Float8Array {
+  constructor(arg) {
+    if (typeof arg === 'number') {
+      this.buffer = new ArrayBuffer(arg);
+      this.bytes = new Uint8Array(this.buffer);
+    } else if (arg instanceof Array) {
+      this.buffer = new ArrayBuffer(arg.length);
+      this.bytes = new Uint8Array(this.buffer);
+      for(var i=0; i<arg.length; i++) this[i] = arg[i];
+    } else if (arg instanceof ArrayBuffer) {
+      this.buffer = arg;
+      this.bytes = new Uint8Array(this.buffer);
+    }
+  }
+}
+Object.defineProperty(Float8Array.prototype, 0, {
+  get: function() { 
+    var byte = this.bytes[0];
+    var sign = (byte & 0x80) ? -1 : 1;
+    var E = (byte & 0x78) >> 3;
+    var M = byte & 0x07;
+    if (E === 15 && M === 7) return NaN;
+    if (E === 0) {
+      if (M === 0) return sign === -1 ? -0 : 0;
+      return sign * Math.pow(2, -6) * (M / 8);
+    }
+    return sign * Math.pow(2, E - 7) * (1 + M / 8);
+  },
+  set: function(num) { 
+    if (isNaN(num)) { this.bytes[0] = 0x7F; return; }
+    if (num === 0) { this.bytes[0] = (1 / num === -Infinity) ? 0x80 : 0x00; return; }
+    var sign = num < 0 ? 0x80 : 0x00;
+    num = Math.abs(num);
+    if (num > 448) { this.bytes[0] = sign | 0x7E; return; }
+    var exp = Math.floor(Math.log2(num));
+    var frac = num / Math.pow(2, exp);
+    if (exp < -6) { 
+      var shift = exp - (-6);
+      var M = Math.round(frac * 8 * Math.pow(2, shift));
+      if (M >= 8) { this.bytes[0] = sign | (1 << 3) | 0; return; }
+      this.bytes[0] = sign | (0 << 3) | M; return;
+    }
+    var E = exp + 7;
+    var M = Math.round((frac - 1) * 8);
+    if (M === 8) { M = 0; E += 1; }
+    this.bytes[0] = sign | (E << 3) | M;
+  }
+});
+
+class Float4Array {
+  constructor(arg) {
+    if (typeof arg === 'number') {
+      this.buffer = new ArrayBuffer(arg);
+      this.bytes = new Uint8Array(this.buffer);
+    } else if (arg instanceof Array) {
+      this.buffer = new ArrayBuffer(arg.length);
+      this.bytes = new Uint8Array(this.buffer);
+      for(var i=0; i<arg.length; i++) this[i] = arg[i];
+    } else if (arg instanceof ArrayBuffer) {
+      this.buffer = arg;
+      this.bytes = new Uint8Array(this.buffer);
+    }
+  }
+}
+Object.defineProperty(Float4Array.prototype, 0, {
+  get: function() { 
+    var byte = this.bytes[0];
+    var sign = (byte & 0x80) ? -1 : 1;
+    var E = (byte & 0x60) >> 5;
+    var M = (byte & 0x10) >> 4;
+    if (E === 0) {
+      if (M === 0) return sign === -1 ? -0 : 0;
+      return sign * Math.pow(2, 0) * (M / 2);
+    }
+    return sign * Math.pow(2, E - 1) * (1 + M / 2);
+  },
+  set: function(num) { 
+    if (isNaN(num)) { this.bytes[0] = 0x60; return; }
+    if (num === 0) { this.bytes[0] = (1 / num === -Infinity) ? 0x80 : 0x00; return; }
+    var sign = num < 0 ? 0x80 : 0x00;
+    num = Math.abs(num);
+    if (num > 6) { this.bytes[0] = sign | 0x70; return; }
+    var exp = Math.floor(Math.log2(num));
+    var frac = num / Math.pow(2, exp);
+    if (exp < 0) { 
+      var shift = exp - 0;
+      var M = Math.round(frac * 2 * Math.pow(2, shift));
+      if (M >= 2) { this.bytes[0] = sign | (1 << 5) | (0 << 4); return; }
+      this.bytes[0] = sign | (0 << 5) | (M << 4); return;
+    }
+    var E = exp + 1;
+    var M = Math.round((frac - 1) * 2);
+    if (M === 2) { M = 0; E += 1; }
+    this.bytes[0] = sign | (E << 5) | (M << 4);
+  }
+});
+
+class BFloat16Array {
+  constructor(arg) {
+    if (typeof arg === 'number') {
+      this.buffer = new ArrayBuffer(arg * 2);
+      this.bytes = new Uint8Array(this.buffer);
+    } else if (arg instanceof Array) {
+      this.buffer = new ArrayBuffer(arg.length * 2);
+      this.bytes = new Uint8Array(this.buffer);
+      for(var i=0; i<arg.length; i++) this[i] = arg[i];
+    } else if (arg instanceof ArrayBuffer) {
+      this.buffer = arg;
+      this.bytes = new Uint8Array(this.buffer);
+    }
+  }
+}
+Object.defineProperty(BFloat16Array.prototype, 0, {
+  get: function() { 
+    var f32 = new Uint8Array(4);
+    f32[2] = this.bytes[0];
+    f32[3] = this.bytes[1];
+    return new Float32Array(f32.buffer)[0];
+  },
+  set: function(num) { 
+    var f32 = new Float32Array([num]);
+    var u8 = new Uint8Array(f32.buffer);
+    this.bytes[0] = u8[2];
+    this.bytes[1] = u8[3];
+  }
+});
+
+class FloatE8M0Array {
+  constructor(arg) {
+    if (typeof arg === 'number') {
+      this.buffer = new ArrayBuffer(arg);
+      this.bytes = new Uint8Array(this.buffer);
+    } else if (arg instanceof Array) {
+      this.buffer = new ArrayBuffer(arg.length);
+      this.bytes = new Uint8Array(this.buffer);
+      for(var i=0; i<arg.length; i++) this[i] = arg[i];
+    } else if (arg instanceof ArrayBuffer) {
+      this.buffer = arg;
+      this.bytes = new Uint8Array(this.buffer);
+    }
+  }
+}
+Object.defineProperty(FloatE8M0Array.prototype, 0, {
+  get: function() { 
+    var E = this.bytes[0];
+    if (E === 255) return NaN;
+    if (E === 0) return 0;
+    return Math.pow(2, E - 127);
+  },
+  set: function(num) { 
+    if (isNaN(num)) { this.bytes[0] = 255; return; }
+    num = Math.abs(num);
+    if (num === 0) { this.bytes[0] = 0; return; }
+    var E = Math.floor(Math.log2(num)) + 127;
+    if (E < 0) E = 0;
+    if (E > 254) E = 254;
+    this.bytes[0] = E;
+  }
+});
+
 (function () {
 
-  function load(array, exponentBits, input, output, help, hex) {
+  function load(array, exponentBits, input, output, help, hex, bitLength) {
     var bytes = new Uint8Array(array.buffer);
     var hexLength = bytes.length;
 
     function reduceNumber(x) {
-      var copy = bytes.length === 2 ? new Float16Array(1) : bytes.length === 4 ? new Float32Array(1) : new Float64Array(1);
+      var copy = new array.constructor(1);
       copy[0] = +x;
       var value = copy[0];
       x = value === 0 && 1 / value === -Infinity ? '-0' : value + '';
@@ -243,24 +467,29 @@ const {Float16Array} = float16;
     for (var i = 0; i < bytes.length; i++) {
       for (var j = 0; j < 8; j++) {
         var index = (bytes.length - i) * 8 - j;
+        var display = (bitLength && index <= 8 - bitLength) ? 'none' : '';
+        var num = bitLength ? index - (8 - bitLength) : index;
         if (j > 3) {
-          html += '<td class="nibble">' + index + '</td>'
+          html += '<td class="nibble" style="display:'+display+'">' + num + '</td>'
         } else {
-          html += '<td class="dark nibble">' + index + '</td>'
+          html += '<td class="dark nibble" style="display:'+display+'">' + num + '</td>'
         }
       }
     }
     html += '</tr>';
     // The bits
     html += '<tr>';
+    var actualBits = bitLength || bytes.length * 8;
+    var hasSign = exponentBits < actualBits;
     for (var i = 0; i < bytes.length; i++) {
       for (var j = 0; j < 8; j++) {
         var index = i * 8 + j;
+        var display = (bitLength && index >= bitLength) ? 'none' : '';
         var className =
-          index === 0 ? 'sign' :
-            index < 1 + exponentBits ? 'exponent' :
+          (hasSign && index === 0) ? 'sign' :
+            index < (hasSign ? 1 : 0) + exponentBits ? 'exponent' :
               'fraction';
-        html += '<td data-index="' + index + '" class="' + className + '">0</td>';
+        html += '<td data-index="' + index + '" class="' + className + '" style="display:'+display+'">0</td>';
       }
     }
     html += '</tr></table>';
@@ -374,8 +603,10 @@ const {Float16Array} = float16;
 
       // Figure out exponent
       var exponent = 0;
+      var actualBits = bitLength || bytes.length * 8;
+      var hasSign = exponentBits < actualBits;
       for (var i = 0; i < exponentBits; i++) {
-        var index = 1 + i;
+        var index = (hasSign ? 1 : 0) + i;
         var bit = (bytes[bytes.length - (index >> 3) - 1] >> (7 - (index & 7))) & 1;
         exponent += bit << (exponentBits - i - 1);
       }
@@ -384,17 +615,20 @@ const {Float16Array} = float16;
 
       // Figure out fraction
       var copyBytes = new Uint8Array(bytes);
-      var copy = bytes.length === 2 ? new Float16Array(copyBytes.buffer) : bytes.length === 4 ? new Float32Array(copyBytes.buffer) : new Float64Array(copyBytes.buffer);
+      var copy = new array.constructor(copyBytes.buffer);
       for (var i = 0; i < exponentBits; i++) {
-        var index = 1 + i;
+        var index = (hasSign ? 1 : 0) + i;
         var byteIndex = bytes.length - (index >> 3) - 1;
         var byteMask = 1 << (7 - (index & 7));
         copyBytes[byteIndex] = (copyBytes[byteIndex] & ~byteMask) | (i === 0 ? 0 : byteMask);
       }
       var signIndex = bytes.length - 1;
       var signMask = 0x80;
-      var sign = copyBytes[signIndex] & signMask;
-      copyBytes[signIndex] &= ~signMask;
+      var sign = 0;
+      if (hasSign) {
+        sign = copyBytes[signIndex] & signMask;
+        copyBytes[signIndex] &= ~signMask;
+      }
       var fraction = copy[0];
 
       // Handle denormal numbers
@@ -417,12 +651,11 @@ const {Float16Array} = float16;
         hex.value = toHexString(tmpBytes);
       }
 
+      var hasFraction = actualBits > exponentBits + (hasSign ? 1 : 0);
       help.innerHTML =
-        '<span class="sign">' + (sign ? -1 : 1) + '</span>' +
-        '&nbsp;&nbsp;&times;&nbsp;&nbsp;' +
+        (hasSign ? '<span class="sign">' + (sign ? -1 : 1) + '</span>&nbsp;&nbsp;&times;&nbsp;&nbsp;' : '') +
         '<span class="exponent">2<sup>' + exponent + '</sup></span>' +
-        '&nbsp;&nbsp;&times;&nbsp;&nbsp;' +
-        '<span class="fraction">' + reduceNumber(fraction) + '</span>';
+        (hasFraction ? '&nbsp;&nbsp;&times;&nbsp;&nbsp;<span class="fraction">' + reduceNumber(fraction) + '</span>' : '');
     }
 
     function toHexString(byteArray) {
@@ -445,6 +678,10 @@ const {Float16Array} = float16;
     render();
   }
 
+  load(new Float4Array([Math.PI]), 2, document.getElementById('input4'), document.getElementById('output4'), document.getElementById('help4'), document.getElementById('hex4'), 4);
+  load(new Float8Array([Math.PI]), 4, document.getElementById('input8'), document.getElementById('output8'), document.getElementById('help8'), document.getElementById('hex8'));
+  load(new FloatE8M0Array([1]), 8, document.getElementById('input_e8m0'), document.getElementById('output_e8m0'), document.getElementById('help_e8m0'), document.getElementById('hex_e8m0'));
+  load(new BFloat16Array([Math.PI]), 8, document.getElementById('input_bf16'), document.getElementById('output_bf16'), document.getElementById('help_bf16'), document.getElementById('hex_bf16'));
   load(new Float16Array([Math.PI]), 5, document.getElementById('input16'), document.getElementById('output16'), document.getElementById('help16'), document.getElementById('hex16'));
   load(new Float32Array([Math.PI]), 8, document.getElementById('input32'), document.getElementById('output32'), document.getElementById('help32'), document.getElementById('hex32'));
   load(new Float64Array([Math.PI]), 11, document.getElementById('input64'), document.getElementById('output64'), document.getElementById('help64'), document.getElementById('hex64'));
